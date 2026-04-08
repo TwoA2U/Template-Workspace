@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Template Workspace</title>
+<link rel="stylesheet" href="/web/Report-Template-builder.css">
+</head>
+<body>
+<div class="layout">
+  <div class="sidebar">
+    <div class="sidebar-top">
+      <div class="workspace">
+        <div class="ws-icon">📋</div>
+        <span class="ws-name">Template Workspace</span>
+      </div>
+    </div>
+    <div class="sidebar-nav">
+      <div class="nav-item active" id="nav-builder" onclick="switchView('builder')"><span class="nav-icon">🗂️</span>Template Builder</div>
+      <div class="nav-item" id="nav-fill" onclick="switchView('fill')"><span class="nav-icon">✏️</span>Fill & Preview</div>
+    </div>
+    <div class="sidebar-divider"></div>
+    <div class="sidebar-section-label">TEMPLATES</div>
+    <div id="tpl-list" style="padding:0 8px"></div>
+    <div class="sidebar-bottom">
+      <button class="new-tpl-btn" onclick="newTemplate()"><span style="font-size:16px">+</span>New template</button>
+    </div>
+  </div>
+
+  <div class="main">
+    <div class="topbar">
+      <div class="breadcrumb">
+        <span>Template Workspace</span><span class="sep">/</span>
+        <span class="current" id="breadcrumb-title">Template Builder</span>
+      </div>
+      <div class="topbar-actions" id="topbar-actions">
+        <button class="btn btn-ghost workspace-btn" id="workspace-btn" onclick="reloadTemplatesFromServer()">Reload Templates</button>
+        <button class="btn btn-blue" onclick="saveTemplate()">Save template</button>
+      </div>
+    </div>
+    <div class="content">
+      <div class="panel visible" id="panel-builder">
+        <div class="page">
+          <div class="page-header">
+            <span class="page-icon">🗂️</span>
+            <input class="page-title-input" id="tpl-name" placeholder="Untitled Template">
+            <div class="page-subtitle" id="tpl-meta">0 sections · 0 fields</div>
+          </div>
+          <div class="narrative-wrap">
+            <div class="narrative-label">
+              Report Narrative
+              <span class="narrative-hint">Type {{ to insert a variable</span>
+            </div>
+            <textarea class="narrative-editor" id="narrative-editor" placeholder="Write your narrative here. Type {{ to insert a field, e.g:&#10;&#10;Alert {{Incident Overview.Incident ID}} was triggered on {{Affected Assets.Hostname(s)}} with severity {{Incident Overview.Severity}}."></textarea>
+            <div class="ac-dropdown" id="ac-dropdown"></div>
+          </div>
+          <div class="var-ref-box" id="var-ref-box">
+            <div class="var-ref-title">AVAILABLE VARIABLES — click to copy</div>
+            <div id="var-chips"></div>
+          </div>
+          <div id="sections-container"></div>
+          <div class="add-section-row">
+            <span style="font-size:15px;color:var(--text3)">+</span>
+            <input id="new-section-input" placeholder="Add a section…" onkeydown="if(event.key==='Enter')addSection()">
+            <button class="btn btn-ghost" onclick="addSection()">Add</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel" id="panel-fill">
+        <div class="fill-preview-wrap">
+          <div class="fill-col">
+            <div class="col-title"><span class="col-title-icon">✏️</span><span id="fill-col-title">Fill Report</span></div>
+            <div id="fill-form"></div>
+          </div>
+          <div class="preview-resizer" id="preview-resizer" title="Drag to resize preview"></div>
+          <div class="preview-col">
+            <div class="col-title"><span class="col-title-icon">👁️</span>Live Preview</div>
+            <div class="export-row">
+              <button class="btn btn-default" id="copy-btn" onclick="copyMd()">Copy Markdown</button>
+              <button class="btn btn-blue" onclick="printReport()">Export PDF</button>
+            </div>
+            <div id="preview-prose-wrap">
+              <div class="preview-prose" id="preview-prose">Fill in the fields on the left to see your report here.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+<script src="/web/Report-Template-builder.js"></script>
+</body>
+</html>

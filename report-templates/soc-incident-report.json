@@ -1,0 +1,180 @@
+{
+  "app": "soc-report-builder",
+  "version": 1,
+  "id": "soc-default",
+  "name": "SOC Incident Report",
+  "narrative": "We have found an alert being triggered with name {{Incident Overview.Incident ID}}.\n\nThe affected host {{Affected Assets.Hostname(s)}} (IP: {{Affected Assets.IP Address(es)}}) was involved in a {{Incident Overview.Incident Type}} incident classified as {{Incident Overview.Severity}} severity.\n\nDetected on {{Incident Overview.Date & Time}} by analyst {{Incident Overview.Analyst}}. Current status: {{Incident Overview.Status}}.\n\n## Summary\n\n{{Incident Description.Summary}}\n\n## Initial Vector\n\n{{Incident Description.Initial Vector}}\n\n## Indicators of Compromise\n\n**Hashes:** {{Indicators of Compromise.File Hashes}}\n**IPs/Domains:** {{Indicators of Compromise.Malicious IPs / Domains}}\n**MITRE TTPs:** {{Indicators of Compromise.MITRE ATT&CK TTPs}}\n\n## Remediation\n\n{{Containment & Remediation.Containment Actions}}\n\n## Root Cause\n\n{{Lessons Learned.Root Cause}}",
+  "sections": [
+    {
+      "name": "Incident Overview",
+      "open": true,
+      "fields": [
+        {
+          "label": "Incident ID",
+          "type": "text",
+          "placeholder": "INC-2024-XXXX"
+        },
+        {
+          "label": "Date & Time",
+          "type": "datetime-local",
+          "placeholder": ""
+        },
+        {
+          "label": "Severity",
+          "type": "select",
+          "options": [
+            "Critical",
+            "High",
+            "Medium",
+            "Low",
+            "Informational"
+          ]
+        },
+        {
+          "label": "Incident Type",
+          "type": "select",
+          "options": [
+            "Malware",
+            "Phishing",
+            "Unauthorized Access",
+            "DDoS",
+            "Data Exfiltration",
+            "Insider Threat",
+            "Other"
+          ]
+        },
+        {
+          "label": "Status",
+          "type": "select",
+          "options": [
+            "Open",
+            "In Progress",
+            "Contained",
+            "Resolved",
+            "Closed"
+          ]
+        },
+        {
+          "label": "Analyst",
+          "type": "text",
+          "placeholder": "Full name"
+        }
+      ]
+    },
+    {
+      "name": "Affected Assets",
+      "open": true,
+      "fields": [
+        {
+          "label": "Hostname(s)",
+          "type": "text",
+          "placeholder": "e.g. DESKTOP-ABC123"
+        },
+        {
+          "label": "IP Address(es)",
+          "type": "text",
+          "placeholder": "192.168.1.x"
+        },
+        {
+          "label": "User Account(s)",
+          "type": "text",
+          "placeholder": "domain\\username"
+        },
+        {
+          "label": "Business Unit",
+          "type": "text",
+          "placeholder": ""
+        }
+      ]
+    },
+    {
+      "name": "Incident Description",
+      "open": true,
+      "fields": [
+        {
+          "label": "Summary",
+          "type": "textarea",
+          "placeholder": "Brief description..."
+        },
+        {
+          "label": "Initial Vector",
+          "type": "textarea",
+          "placeholder": "How did the attacker gain access?"
+        },
+        {
+          "label": "Timeline of Events",
+          "type": "textarea",
+          "placeholder": "Chronological log..."
+        }
+      ]
+    },
+    {
+      "name": "Indicators of Compromise",
+      "open": true,
+      "fields": [
+        {
+          "label": "File Hashes",
+          "type": "textarea",
+          "placeholder": "MD5/SHA256 \u2014 one per line"
+        },
+        {
+          "label": "Malicious IPs / Domains",
+          "type": "textarea",
+          "placeholder": "One per line"
+        },
+        {
+          "label": "File Paths / Registry Keys",
+          "type": "textarea",
+          "placeholder": "One per line"
+        },
+        {
+          "label": "MITRE ATT&CK TTPs",
+          "type": "text",
+          "placeholder": "T1059.001, T1003.001"
+        }
+      ]
+    },
+    {
+      "name": "Containment & Remediation",
+      "open": true,
+      "fields": [
+        {
+          "label": "Containment Actions",
+          "type": "textarea",
+          "placeholder": "Steps taken..."
+        },
+        {
+          "label": "Eradication Steps",
+          "type": "textarea",
+          "placeholder": "How was the threat removed?"
+        },
+        {
+          "label": "Recovery Actions",
+          "type": "textarea",
+          "placeholder": "Restore normal operations..."
+        }
+      ]
+    },
+    {
+      "name": "Lessons Learned",
+      "open": true,
+      "fields": [
+        {
+          "label": "Root Cause",
+          "type": "textarea",
+          "placeholder": "Root cause..."
+        },
+        {
+          "label": "Recommendations",
+          "type": "textarea",
+          "placeholder": "Improvements..."
+        },
+        {
+          "label": "Additional Notes",
+          "type": "textarea",
+          "placeholder": ""
+        }
+      ]
+    }
+  ]
+}

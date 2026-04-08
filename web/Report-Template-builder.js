@@ -7,11 +7,12 @@ let serverTemplateDir='report-templates';
 let pendingServerWarnings=[];
 let addFieldDrafts={};
 let dragFieldState=null;
+let dragSectionState=null;
 
-const STORAGE_KEY='soc-report-builder.state.v3';
-const THEME_KEY='soc-report-builder.theme';
+const STORAGE_KEY='template-workspace.state.v1';
+const THEME_KEY='template-workspace.theme';
 const TEMPLATE_FILE_SUFFIX='.json';
-const PREVIEW_WIDTH_KEY='soc-report-builder.fill-width';
+const PREVIEW_WIDTH_KEY='template-workspace.fill-width';
 const DEFAULT_FILL_WIDTH=420;
 const MIN_FILL_WIDTH=300;
 const MAX_FILL_WIDTH=900;
@@ -168,6 +169,42 @@ function getCurrentDateValue(type){
   return `${year}-${month}-${day}`;
 }
 
+function getCurrentTimeValue(){
+  const now=new Date();
+  return `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+}
+
+function combineDateTimeParts(dateValue,timeValue){
+  const datePart=(dateValue||'').trim();
+  const timePart=(timeValue||'').trim();
+  if(!datePart)return '';
+  if(!timePart)return `${datePart} 00:00`;
+  return `${datePart} ${timePart}`;
+}
+
+function formatFieldValue(field,value){
+  const raw=(value||'').trim();
+  if(!raw)return '';
+
+  if(field.type==='date'){
+    const match=raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if(match){
+      return `${match[3]}/${match[2]}/${match[1]}`;
+    }
+    return raw;
+  }
+
+  if(field.type==='datetime-local'){
+    const match=raw.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/);
+    if(match){
+      return `${match[3]}/${match[2]}/${match[1]} ${match[4]}:${match[5]}`;
+    }
+    return raw.replace('T',' ');
+  }
+
+  return raw;
+}
+
 function syncAddFieldDraft(si){
   const labelEl=document.getElementById(`fl-${si}`);
   const typeEl=document.getElementById(`ft-${si}`);
@@ -321,11 +358,7 @@ function loadTemplate(id){
   const t=templates[id];
   document.getElementById('tpl-name').value=t.name;
   document.getElementById('narrative-editor').value=t.narrative||'';
-  renderBuilder();
-  renderSidebar();
-  updateMeta();
-  renderVarChips();
-  if(currentView==='fill')renderFillForm();
+  refreshTemplateViews();
   renderTopbarActions(currentView);
 }
 
@@ -335,9 +368,51 @@ function renderSidebar(){
   Object.keys(templates).forEach(id=>{
     const d=document.createElement('div');
     d.className='tpl-row'+(activeId===id?' active':'');
-    d.innerHTML=`<span class="tpl-icon">📋</span><span class="tpl-name" onclick="loadTemplate('${id}')">${templates[id].name}</span><button class="tpl-del" onclick="delTpl('${id}')">×</button>`;
+    const icon=document.createElement('span');
+    icon.className='tpl-icon';
+    icon.textContent='📋';
+
+    const name=document.createElement('button');
+    name.type='button';
+    name.className='tpl-name';
+    name.textContent=templates[id].name;
+    name.title=templates[id].name;
+    name.addEventListener('click',()=>loadTemplate(id));
+
+    const duplicate=document.createElement('button');
+    duplicate.type='button';
+    duplicate.className='tpl-action';
+    duplicate.title='Duplicate template';
+    duplicate.textContent='⧉';
+    duplicate.addEventListener('click',event=>{
+      event.stopPropagation();
+      duplicateTemplate(id);
+    });
+
+    const remove=document.createElement('button');
+    remove.type='button';
+    remove.className='tpl-del';
+    remove.title='Delete template';
+    remove.textContent='×';
+    remove.addEventListener('click',event=>{
+      event.stopPropagation();
+      delTpl(id);
+    });
+
+    d.appendChild(icon);
+    d.appendChild(name);
+    d.appendChild(duplicate);
+    d.appendChild(remove);
     el.appendChild(d);
   });
+}
+
+function refreshTemplateViews({builder=true,sidebar=true,meta=true,vars=true,fill=currentView==='fill'}={}){
+  if(builder)renderBuilder();
+  if(sidebar)renderSidebar();
+  if(meta)updateMeta();
+  if(vars)renderVarChips();
+  if(fill)renderFillForm();
 }
 
 function updateMeta(){
@@ -363,6 +438,18 @@ function renderVarChips(){
 
 function copyVar(v){navigator.clipboard.writeText(v).then(()=>toast('Copied'));}
 
+function moveSection(fromIndex,toIndex){
+  const sections=templates[activeId]?.sections;
+  if(!sections || fromIndex===toIndex || fromIndex<0 || toIndex<0 || fromIndex>=sections.length || toIndex>=sections.length){
+    return;
+  }
+  const [section]=sections.splice(fromIndex,1);
+  sections.splice(toIndex,0,section);
+  addFieldDrafts={};
+  refreshTemplateViews();
+  scheduleTemplatePersist();
+}
+
 function moveField(sectionIndex,fromIndex,toIndex){
   const fields=templates[activeId]?.sections?.[sectionIndex]?.fields;
   if(!fields || fromIndex===toIndex || fromIndex<0 || toIndex<0 || fromIndex>=fields.length || toIndex>=fields.length){
@@ -370,10 +457,47 @@ function moveField(sectionIndex,fromIndex,toIndex){
   }
   const [field]=fields.splice(fromIndex,1);
   fields.splice(toIndex,0,field);
-  renderBuilder();
-  updateMeta();
-  renderVarChips();
+  refreshTemplateViews();
   scheduleTemplatePersist();
+}
+
+function handleSectionDragStart(sectionIndex,event){
+  dragSectionState={sectionIndex};
+  event.dataTransfer.effectAllowed='move';
+  event.dataTransfer.setData('text/plain',`section:${sectionIndex}`);
+  event.currentTarget.classList.add('dragging');
+}
+
+function handleSectionDragOver(sectionIndex,event){
+  if(!dragSectionState || dragSectionState.sectionIndex===sectionIndex){
+    return;
+  }
+  event.preventDefault();
+  event.dataTransfer.dropEffect='move';
+  document.querySelectorAll('.section-block').forEach(block=>block.classList.remove('drop-target'));
+  event.currentTarget.classList.add('drop-target');
+}
+
+function handleSectionDrop(sectionIndex,event){
+  if(!dragSectionState){
+    return;
+  }
+  event.preventDefault();
+  document.querySelectorAll('.section-block').forEach(block=>block.classList.remove('drop-target'));
+  event.currentTarget.classList.remove('drop-target');
+  if(dragSectionState.sectionIndex!==sectionIndex){
+    moveSection(dragSectionState.sectionIndex,sectionIndex);
+  }
+  dragSectionState=null;
+}
+
+function handleSectionDragEnd(event){
+  document.querySelectorAll('.section-block').forEach(block=>{
+    block.classList.remove('dragging');
+    block.classList.remove('drop-target');
+  });
+  event.currentTarget.classList.remove('dragging');
+  dragSectionState=null;
 }
 
 function handleFieldDragStart(sectionIndex,fieldIndex,event){
@@ -429,49 +553,276 @@ function getFieldConfigSummary(field){
   return field.placeholder ? `Placeholder: ${field.placeholder}` : 'Placeholder: none';
 }
 
+function createFieldTypeSelect(value,changeHandler){
+  const select=document.createElement('select');
+  [
+    ['text','Text'],
+    ['textarea','Textarea'],
+    ['date','Date'],
+    ['datetime-local','Date+Time'],
+    ['select','Select']
+  ].forEach(([optionValue,label])=>{
+    const option=document.createElement('option');
+    option.value=optionValue;
+    option.textContent=label;
+    select.appendChild(option);
+  });
+  select.value=value;
+  select.addEventListener('change',changeHandler);
+  return select;
+}
+
+function updateFieldType(sectionIndex,fieldIndex,nextType){
+  const field=templates[activeId]?.sections?.[sectionIndex]?.fields?.[fieldIndex];
+  if(!field)return;
+  field.type=nextType;
+  delete field.options;
+  delete field.dateMode;
+  if(nextType==='select'){
+    field.options=['Option 1','Option 2'];
+    field.placeholder='';
+  }else if(nextType==='date' || nextType==='datetime-local'){
+    field.dateMode='manual';
+    field.placeholder=suggestFieldPlaceholder(field.label,nextType);
+  }else{
+    field.placeholder=suggestFieldPlaceholder(field.label,nextType);
+  }
+  refreshTemplateViews();
+  scheduleTemplatePersist();
+}
+
+function createFieldConfigEditor(field,sectionIndex,fieldIndex,onSummaryChange){
+  const editor=document.createElement('div');
+  editor.className='field-config-editor';
+
+  if(field.type==='select'){
+    const input=document.createElement('input');
+    input.type='text';
+    input.value=Array.isArray(field.options)?field.options.join(', '):'';
+    input.placeholder='Options (comma-sep)';
+    input.addEventListener('input',event=>{
+      field.options=event.target.value
+        .split(',')
+        .map(value=>value.trim())
+        .filter(Boolean);
+      onSummaryChange();
+      refreshTemplateViews({builder:false,sidebar:false,meta:false,vars:false,fill:false});
+      scheduleTemplatePersist();
+    });
+    editor.appendChild(input);
+    return editor;
+  }
+
+  if(field.type==='date' || field.type==='datetime-local'){
+    const select=document.createElement('select');
+    [
+      ['manual','Manual entry'],
+      ['current',`Use current ${field.type==='date'?'date':'date & time'}`]
+    ].forEach(([optionValue,label])=>{
+      const option=document.createElement('option');
+      option.value=optionValue;
+      option.textContent=label;
+      select.appendChild(option);
+    });
+    select.value=field.dateMode==='current' ? 'current' : 'manual';
+    select.addEventListener('change',event=>{
+      field.dateMode=event.target.value;
+      onSummaryChange();
+      refreshTemplateViews({builder:false,sidebar:false,meta:false,vars:false,fill:currentView==='fill'});
+      scheduleTemplatePersist();
+    });
+    editor.appendChild(select);
+    return editor;
+  }
+
+  const input=document.createElement('input');
+  input.type='text';
+  input.value=field.placeholder||'';
+  input.placeholder='Placeholder (optional)';
+  input.addEventListener('input',event=>{
+    field.placeholder=event.target.value;
+    onSummaryChange();
+    refreshTemplateViews({builder:false,sidebar:false,meta:false,vars:false,fill:currentView==='fill'});
+    scheduleTemplatePersist();
+  });
+  editor.appendChild(input);
+  return editor;
+}
+
+function createFieldRow(field,sectionIndex,fieldIndex){
+  const row=document.createElement('div');
+  row.className='field-row';
+  row.draggable=true;
+  row.dataset.sectionIndex=String(sectionIndex);
+  row.dataset.fieldIndex=String(fieldIndex);
+  row.addEventListener('dragstart',event=>handleFieldDragStart(sectionIndex,fieldIndex,event));
+  row.addEventListener('dragover',event=>handleFieldDragOver(sectionIndex,fieldIndex,event));
+  row.addEventListener('drop',event=>handleFieldDrop(sectionIndex,fieldIndex,event));
+  row.addEventListener('dragend',event=>handleFieldDragEnd(event));
+
+  const drag=document.createElement('span');
+  drag.className='field-drag';
+  drag.textContent='⠿';
+
+  const labelInput=document.createElement('input');
+  labelInput.type='text';
+  labelInput.className='field-label-input';
+  labelInput.value=field.label;
+  labelInput.placeholder='Field label';
+  labelInput.addEventListener('click',event=>event.stopPropagation());
+  labelInput.addEventListener('input',event=>{
+    field.label=event.target.value;
+    refreshTemplateViews({builder:false,sidebar:false,meta:false,vars:true,fill:currentView==='fill'});
+    scheduleTemplatePersist();
+  });
+
+  const typeSelect=createFieldTypeSelect(field.type,event=>{
+    updateFieldType(sectionIndex,fieldIndex,event.target.value);
+  });
+  typeSelect.className='field-type-select';
+  typeSelect.addEventListener('click',event=>event.stopPropagation());
+
+  const summary=document.createElement('span');
+  summary.className='field-config-text';
+  const syncSummary=()=>{
+    const text=getFieldConfigSummary(field);
+    summary.textContent=text;
+    summary.title=text;
+  };
+  syncSummary();
+  const configEditor=createFieldConfigEditor(field,sectionIndex,fieldIndex,syncSummary);
+
+  const remove=document.createElement('button');
+  remove.type='button';
+  remove.className='field-remove';
+  remove.textContent='×';
+  remove.title='Delete field';
+  remove.addEventListener('click',event=>{
+    event.stopPropagation();
+    removeField(sectionIndex,fieldIndex);
+  });
+
+  row.appendChild(drag);
+  row.appendChild(labelInput);
+  row.appendChild(typeSelect);
+  row.appendChild(configEditor);
+  row.appendChild(summary);
+  row.appendChild(remove);
+  return row;
+}
+
+function createSectionBlock(section,sectionIndex){
+  const wrap=document.createElement('div');
+  wrap.className='section-block';
+  wrap.dataset.sectionIndex=String(sectionIndex);
+  wrap.addEventListener('dragover',event=>handleSectionDragOver(sectionIndex,event));
+  wrap.addEventListener('drop',event=>handleSectionDrop(sectionIndex,event));
+
+  const header=document.createElement('div');
+  header.className='section-header';
+  header.addEventListener('click',event=>toggleSection(sectionIndex,event));
+
+  const drag=document.createElement('span');
+  drag.className='section-drag';
+  drag.textContent='⠿';
+  drag.draggable=true;
+  drag.addEventListener('click',event=>event.stopPropagation());
+  drag.addEventListener('dragstart',event=>handleSectionDragStart(sectionIndex,event));
+  drag.addEventListener('dragend',event=>handleSectionDragEnd(event));
+
+  const toggle=document.createElement('span');
+  toggle.className=`section-toggle ${section.open?'open':''}`;
+  toggle.textContent='▶';
+
+  const nameInput=document.createElement('input');
+  nameInput.className='section-name-input';
+  nameInput.value=section.name;
+  nameInput.addEventListener('click',event=>event.stopPropagation());
+  nameInput.addEventListener('input',event=>{
+    templates[activeId].sections[sectionIndex].name=event.target.value;
+    updateMeta();
+    renderVarChips();
+    if(currentView==='fill')renderFillForm();
+    scheduleTemplatePersist();
+  });
+
+  const remove=document.createElement('button');
+  remove.type='button';
+  remove.className='section-remove';
+  remove.textContent='Delete';
+  remove.addEventListener('click',event=>{
+    event.stopPropagation();
+    removeSection(sectionIndex);
+  });
+
+  header.appendChild(drag);
+  header.appendChild(toggle);
+  header.appendChild(nameInput);
+  header.appendChild(remove);
+
+  const body=document.createElement('div');
+  body.className='section-body';
+  body.style.display=section.open?'block':'none';
+  section.fields.forEach((field,fieldIndex)=>{
+    body.appendChild(createFieldRow(field,sectionIndex,fieldIndex));
+  });
+
+  const addFieldRow=document.createElement('div');
+  addFieldRow.className='add-field-row';
+
+  const fieldLabel=document.createElement('input');
+  fieldLabel.type='text';
+  fieldLabel.id=`fl-${sectionIndex}`;
+  fieldLabel.placeholder='Field label';
+  fieldLabel.style.flex='1';
+  fieldLabel.style.minWidth='120px';
+  fieldLabel.value=getAddFieldDraft(sectionIndex).label||'';
+  fieldLabel.addEventListener('input',()=>syncAddFieldDraft(sectionIndex));
+  fieldLabel.addEventListener('keydown',event=>{
+    if(event.key==='Enter')addField(sectionIndex);
+  });
+
+  const typeSelect=createFieldTypeSelect(getAddFieldDraft(sectionIndex).type||'text',()=>onAddFieldTypeChange(sectionIndex));
+  typeSelect.id=`ft-${sectionIndex}`;
+  typeSelect.style.width='105px';
+
+  const configWrap=document.createElement('div');
+  configWrap.id=`fc-wrap-${sectionIndex}`;
+  configWrap.style.display='flex';
+  configWrap.style.flex='1';
+  configWrap.style.minWidth='120px';
+
+  const addButton=document.createElement('button');
+  addButton.type='button';
+  addButton.className='btn btn-ghost';
+  addButton.style.fontSize='12px';
+  addButton.style.whiteSpace='nowrap';
+  addButton.textContent='+ Add';
+  addButton.addEventListener('click',()=>addField(sectionIndex));
+
+  addFieldRow.appendChild(fieldLabel);
+  addFieldRow.appendChild(typeSelect);
+  addFieldRow.appendChild(configWrap);
+  addFieldRow.appendChild(addButton);
+  body.appendChild(addFieldRow);
+
+  wrap.appendChild(header);
+  wrap.appendChild(body);
+  return wrap;
+}
+
 function renderBuilder(){
   const t=templates[activeId];
   const c=document.getElementById('sections-container');
   c.innerHTML='';
   t.sections.forEach((sec,si)=>{
-    const wrap=document.createElement('div');
-    wrap.className='section-block';
-    const body=sec.fields.map((f,fi)=>`
-      <div class="field-row" draggable="true" data-section-index="${si}" data-field-index="${fi}" ondragstart="handleFieldDragStart(${si},${fi},event)" ondragover="handleFieldDragOver(${si},${fi},event)" ondrop="handleFieldDrop(${si},${fi},event)" ondragend="handleFieldDragEnd(event)">
-        <span class="field-drag">⠿</span>
-        <span class="field-label-text">${f.label}</span>
-        <span class="field-type-badge">${f.type}</span>
-        <span class="field-config-text" title="${getFieldConfigSummary(f).replace(/"/g,'&quot;')}">${getFieldConfigSummary(f)}</span>
-        <button class="field-remove" onclick="removeField(${si},${fi})">×</button>
-      </div>`).join('');
-    wrap.innerHTML=`
-      <div class="section-header" onclick="toggleSection(${si},event)">
-        <span class="section-toggle ${sec.open?'open':''}">▶</span>
-        <input class="section-name-input" value="${sec.name}" onclick="event.stopPropagation()" oninput="templates[activeId].sections[${si}].name=this.value;updateMeta();renderVarChips();scheduleTemplatePersist()">
-        <button class="section-remove" onclick="event.stopPropagation();removeSection(${si})">Delete</button>
-      </div>
-      <div class="section-body" style="display:${sec.open?'block':'none'}">
-        ${body}
-        <div class="add-field-row">
-          <input type="text" id="fl-${si}" placeholder="Field label" style="flex:1;min-width:120px" value="${getAddFieldDraft(si).label||''}" oninput="syncAddFieldDraft(${si})" onkeydown="if(event.key==='Enter')addField(${si})">
-          <select id="ft-${si}" style="width:105px" onchange="onAddFieldTypeChange(${si})">
-            <option value="text">Text</option><option value="textarea">Textarea</option>
-            <option value="date">Date</option><option value="datetime-local">Date+Time</option>
-            <option value="select">Select</option>
-          </select>
-          <div id="fc-wrap-${si}" style="display:flex;flex:1;min-width:120px"></div>
-          <button class="btn btn-ghost" style="font-size:12px;white-space:nowrap" onclick="addField(${si})">+ Add</button>
-        </div>
-      </div>`;
-    c.appendChild(wrap);
-    const typeEl=document.getElementById(`ft-${si}`);
-    typeEl.value=getAddFieldDraft(si).type||'text';
+    c.appendChild(createSectionBlock(sec,si));
     renderAddFieldConfig(si);
   });
 }
 
 function toggleSection(si,e){
-  if(e.target.tagName==='INPUT'||e.target.tagName==='BUTTON')return;
+  if(e.target.tagName==='INPUT'||e.target.tagName==='BUTTON'||e.target.tagName==='SELECT')return;
   templates[activeId].sections[si].open=!templates[activeId].sections[si].open;
   renderBuilder();
   scheduleTemplatePersist();
@@ -479,17 +830,14 @@ function toggleSection(si,e){
 
 function removeSection(si){
   templates[activeId].sections.splice(si,1);
-  renderBuilder();
-  updateMeta();
-  renderVarChips();
+  addFieldDrafts={};
+  refreshTemplateViews();
   scheduleTemplatePersist();
 }
 
 function removeField(si,fi){
   templates[activeId].sections[si].fields.splice(fi,1);
-  renderBuilder();
-  updateMeta();
-  renderVarChips();
+  refreshTemplateViews();
   scheduleTemplatePersist();
 }
 
@@ -499,9 +847,7 @@ function addSection(){
   if(!name)return;
   templates[activeId].sections.push({name,open:true,fields:[]});
   inp.value='';
-  renderBuilder();
-  updateMeta();
-  renderVarChips();
+  refreshTemplateViews();
   scheduleTemplatePersist();
 }
 
@@ -522,9 +868,7 @@ function addField(si){
   }
   templates[activeId].sections[si].fields.push(f);
   addFieldDrafts[si]={type:'text',label:'',config:''};
-  renderBuilder();
-  updateMeta();
-  renderVarChips();
+  refreshTemplateViews();
   scheduleTemplatePersist();
 }
 
@@ -547,6 +891,18 @@ function newTemplate(){
     {label:'Description',type:'textarea',placeholder:suggestFieldPlaceholder('Description','textarea')},
   ]}],fileName:null};
   loadTemplate(id);
+  scheduleTemplatePersist();
+}
+
+function duplicateTemplate(id){
+  const source=templates[id];
+  if(!source)return;
+  const copyId=`tpl-${Date.now()}`;
+  const clone=JSON.parse(JSON.stringify(source));
+  clone.name=`${source.name} Copy`;
+  clone.fileName=null;
+  templates[copyId]=clone;
+  loadTemplate(copyId);
   scheduleTemplatePersist();
 }
 
@@ -681,6 +1037,39 @@ function renderFillForm(){
           inp.appendChild(opt);
         });
         inp.addEventListener('change',()=>{formVals[k]=inp.value;updatePreview();});
+      } else if(f.type==='datetime-local'){
+        const wrap=document.createElement('div');
+        wrap.className='datetime-split';
+
+        const dateInput=document.createElement('input');
+        dateInput.type='date';
+
+        const timeInput=document.createElement('input');
+        timeInput.type='time';
+
+        const syncDateTime=()=>{
+          formVals[k]=combineDateTimeParts(dateInput.value,timeInput.value);
+          updatePreview();
+        };
+
+        if(f.dateMode==='current'){
+          dateInput.value=getCurrentDateValue('date');
+          timeInput.value=getCurrentTimeValue();
+          dateInput.disabled=true;
+          timeInput.disabled=true;
+          formVals[k]=combineDateTimeParts(dateInput.value,timeInput.value);
+        } else {
+          dateInput.addEventListener('input',syncDateTime);
+          timeInput.addEventListener('input',syncDateTime);
+        }
+
+        wrap.appendChild(dateInput);
+        wrap.appendChild(timeInput);
+        tdVal.appendChild(wrap);
+        tr.appendChild(tdKey);
+        tr.appendChild(tdVal);
+        tbl.appendChild(tr);
+        return;
       } else if((f.type==='date' || f.type==='datetime-local') && f.dateMode==='current'){
         inp=document.createElement('input');
         inp.type=f.type;
@@ -715,7 +1104,9 @@ function getValMap(){
   if(!activeId)return{};
   const map={};
   templates[activeId].sections.forEach((sec,si)=>{
-    sec.fields.forEach((f,fi)=>{map[`${sec.name}.${f.label}`]=(formVals[`${si}_${fi}`]||'').trim();});
+    sec.fields.forEach((f,fi)=>{
+      map[`${sec.name}.${f.label}`]=formatFieldValue(f,formVals[`${si}_${fi}`]||'');
+    });
   });
   return map;
 }

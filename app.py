@@ -59,7 +59,7 @@ def normalize_template_collection(collection: dict | None) -> dict[str, dict]:
 
 def build_template_body(template_id: str, template: dict) -> dict:
     return {
-        'app': 'soc-report-builder',
+        'app': 'template-workspace',
         'version': 1,
         'id': template_id,
         'name': template['name'],
@@ -201,7 +201,7 @@ class AppHandler(SimpleHTTPRequestHandler):
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description='Serve the SOC Report Builder locally.')
+    parser = argparse.ArgumentParser(description='Serve Template Workspace locally.')
     parser.add_argument('--host', default='127.0.0.1', help='Host interface to bind to')
     parser.add_argument('--port', type=int, default=8000, help='Port to listen on')
     parser.add_argument(

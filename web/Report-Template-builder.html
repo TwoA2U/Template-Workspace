@@ -17,14 +17,24 @@
       </div>
     </div>
     <div class="sidebar-nav">
-      <div class="nav-item active" id="nav-builder" onclick="switchView('builder')"><span class="nav-icon">🗂️</span>Template Builder</div>
-      <div class="nav-item" id="nav-fill" onclick="switchView('fill')"><span class="nav-icon">✏️</span>Fill & Preview</div>
+      <button class="nav-item active" id="nav-builder" type="button" onclick="switchView('builder')" aria-pressed="true"><span class="nav-icon">🗂️</span>Template Builder</button>
+      <button class="nav-item" id="nav-fill" type="button" onclick="switchView('fill')" aria-pressed="false"><span class="nav-icon">✏️</span>Fill & Preview</button>
     </div>
     <div class="sidebar-divider"></div>
-    <div class="sidebar-section-label">TEMPLATES</div>
+    <div class="sidebar-section-head">
+      <div class="sidebar-section-label">TEMPLATES</div>
+      <label class="sidebar-sort">
+        <span class="sr-only">Sort templates</span>
+        <select id="template-sort" aria-label="Sort templates">
+          <option value="recent">Recent</option>
+          <option value="az">A-Z</option>
+          <option value="za">Z-A</option>
+        </select>
+      </label>
+    </div>
     <div id="tpl-list" style="padding:0 8px"></div>
     <div class="sidebar-bottom">
-      <button class="new-tpl-btn" onclick="newTemplate()"><span style="font-size:16px">+</span>New template</button>
+      <button class="new-tpl-btn" type="button" onclick="newTemplate()"><span style="font-size:16px">+</span>New template</button>
     </div>
   </div>
 
@@ -44,7 +54,7 @@
         <div class="page">
           <div class="page-header">
             <span class="page-icon">🗂️</span>
-            <input class="page-title-input" id="tpl-name" placeholder="Untitled Template">
+            <input class="page-title-input" id="tpl-name" placeholder="Untitled Template" aria-label="Template name">
             <div class="page-subtitle" id="tpl-meta">0 sections · 0 fields</div>
           </div>
           <div class="narrative-wrap">
@@ -52,7 +62,7 @@
               Report Narrative
               <span class="narrative-hint">Type {{ to insert a variable</span>
             </div>
-            <textarea class="narrative-editor" id="narrative-editor" placeholder="Write your narrative here. Type {{ to insert a field, e.g:&#10;&#10;Alert {{Incident Overview.Incident ID}} was triggered on {{Affected Assets.Hostname(s)}} with severity {{Incident Overview.Severity}}."></textarea>
+            <textarea class="narrative-editor" id="narrative-editor" placeholder="Write your narrative here. Type {{ to insert a field, e.g:&#10;&#10;Alert {{Incident Overview.Incident ID}} was triggered on {{Affected Assets.Hostname(s)}} with severity {{Incident Overview.Severity}}." aria-label="Report narrative editor"></textarea>
             <div class="ac-dropdown" id="ac-dropdown"></div>
           </div>
           <div class="var-ref-box" id="var-ref-box">
@@ -62,8 +72,8 @@
           <div id="sections-container"></div>
           <div class="add-section-row">
             <span style="font-size:15px;color:var(--text3)">+</span>
-            <input id="new-section-input" placeholder="Add a section…" onkeydown="if(event.key==='Enter')addSection()">
-            <button class="btn btn-ghost" onclick="addSection()">Add</button>
+            <input id="new-section-input" placeholder="Add a section…" aria-label="New section name" onkeydown="if(event.key==='Enter')addSection()">
+            <button class="btn btn-ghost" type="button" onclick="addSection()">Add</button>
           </div>
         </div>
       </div>
@@ -74,7 +84,7 @@
             <div class="col-title"><span class="col-title-icon">✏️</span><span id="fill-col-title">Fill Report</span></div>
             <div id="fill-form"></div>
           </div>
-          <div class="preview-resizer" id="preview-resizer" title="Drag to resize preview"></div>
+          <div class="preview-resizer" id="preview-resizer" title="Drag to resize preview" aria-label="Resize preview panel" role="separator"></div>
           <div class="preview-col">
             <div class="col-title"><span class="col-title-icon">👁️</span>Live Preview</div>
             <div class="export-row">
@@ -90,7 +100,7 @@
     </div>
   </div>
 </div>
-<div class="toast" id="toast"></div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
 <script src="/web/Report-Template-builder.js"></script>
 </body>
 </html>

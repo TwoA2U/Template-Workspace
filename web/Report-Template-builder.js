@@ -11,6 +11,7 @@ let dragSectionState=null;
 
 const STORAGE_KEY='template-workspace.state.v1';
 const THEME_KEY='template-workspace.theme';
+const TEMPLATE_SORT_KEY='template-workspace.template-sort';
 const TEMPLATE_FILE_SUFFIX='.json';
 const PREVIEW_WIDTH_KEY='template-workspace.fill-width';
 const DEFAULT_FILL_WIDTH=420;
@@ -64,10 +65,13 @@ async function init(){
   applyStoredTheme();
   applyStoredPreviewWidth();
   await hydrateTemplates();
+  applyStoredTemplateSort();
   const firstId=templates[activeId]?activeId:Object.keys(templates)[0];
   loadTemplate(firstId||'soc-default');
   setupAutocomplete();
   setupPreviewResize();
+  setupTemplateSort();
+  setupGlobalShortcuts();
   renderTopbarActions(currentView);
 }
 
@@ -79,6 +83,16 @@ function getStoredTheme(){
 function applyTheme(theme){
   document.documentElement.dataset.theme=theme;
   localStorage.setItem(THEME_KEY,theme);
+}
+
+function getStoredTemplateSort(){
+  const stored=localStorage.getItem(TEMPLATE_SORT_KEY);
+  return ['recent','az','za'].includes(stored) ? stored : 'recent';
+}
+
+function applyStoredTemplateSort(){
+  const select=document.getElementById('template-sort');
+  if(select)select.value=getStoredTemplateSort();
 }
 
 function applyStoredTheme(){
@@ -365,7 +379,7 @@ function loadTemplate(id){
 function renderSidebar(){
   const el=document.getElementById('tpl-list');
   el.innerHTML='';
-  Object.keys(templates).forEach(id=>{
+  getSortedTemplateIds().forEach(id=>{
     const d=document.createElement('div');
     d.className='tpl-row'+(activeId===id?' active':'');
     const icon=document.createElement('span');
@@ -407,6 +421,22 @@ function renderSidebar(){
   });
 }
 
+function getSortedTemplateIds(){
+  const sortMode=getStoredTemplateSort();
+  const ids=Object.keys(templates);
+  if(sortMode==='az'){
+    return ids.sort((a,b)=>templates[a].name.localeCompare(templates[b].name));
+  }
+  if(sortMode==='za'){
+    return ids.sort((a,b)=>templates[b].name.localeCompare(templates[a].name));
+  }
+  return ids.sort((a,b)=>{
+    if(a===activeId)return -1;
+    if(b===activeId)return 1;
+    return 0;
+  });
+}
+
 function refreshTemplateViews({builder=true,sidebar=true,meta=true,vars=true,fill=currentView==='fill'}={}){
   if(builder)renderBuilder();
   if(sidebar)renderSidebar();
@@ -433,7 +463,17 @@ function getAllVars(){
 
 function renderVarChips(){
   const el=document.getElementById('var-chips');
-  el.innerHTML=getAllVars().map(v=>`<span class="var-chip" title="Click to copy" onclick="copyVar('{{${v.key}}}')">{{${v.key}}}</span>`).join('');
+  el.innerHTML='';
+  getAllVars().forEach(v=>{
+    const chip=document.createElement('button');
+    chip.type='button';
+    chip.className='var-chip';
+    chip.title=`Copy ${v.key}`;
+    chip.setAttribute('aria-label',`Copy variable ${v.key}`);
+    chip.textContent=`{{${v.key}}}`;
+    chip.addEventListener('click',()=>copyVar(`{{${v.key}}}`));
+    el.appendChild(chip);
+  });
 }
 
 function copyVar(v){navigator.clipboard.writeText(v).then(()=>toast('Copied'));}
@@ -906,6 +946,17 @@ function duplicateTemplate(id){
   scheduleTemplatePersist();
 }
 
+function setupTemplateSort(){
+  const select=document.getElementById('template-sort');
+  if(!select)return;
+  select.value=getStoredTemplateSort();
+  select.addEventListener('change',event=>{
+    localStorage.setItem(TEMPLATE_SORT_KEY,event.target.value);
+    renderSidebar();
+    toast(`Sorting templates: ${event.target.options[event.target.selectedIndex].text}`);
+  });
+}
+
 function delTpl(id){
   if(Object.keys(templates).length<=1){toast('Cannot delete last template');return;}
   delete templates[id];
@@ -1160,12 +1211,26 @@ function printReport(){
     .replace(/^---$/gm,'<hr>')
     .replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>')
     .replace(/\[(.+?)\]/g,'<span style="background:#fbe4e4;color:#e03e3e;padding:0 2px;border-radius:3px">[$1]</span>')
-    .replace(/\n/g,'<br>');
+    .split(/\n{2,}/)
+    .map(block=>{
+      if(/^\s*<h[1-3]|^\s*<blockquote|^\s*<hr/.test(block))return block;
+      return `<p>${block.replace(/\n/g,'<br>')}</p>`;
+    })
+    .join('');
   win.document.write(`<!DOCTYPE html><html><head><title>${escHtml(t.name)}</title>
-  <style>body{font-family:-apple-system,sans-serif;max-width:800px;margin:40px auto;padding:0 40px;color:#37352f;font-size:14px;line-height:1.7}
-  h1{font-size:26px;margin-bottom:4px}h2{font-size:17px;margin-top:24px}h3{font-size:14px;color:#787672;margin-top:14px}
-  blockquote{border-left:3px solid #e9e9e7;margin:0;padding:4px 12px;color:#787672}hr{border:none;border-top:1px solid #e9e9e7;margin:18px 0}
-  </style></head><body>${body}</body></html>`);
+  <style>
+  body{font-family:Georgia,'Times New Roman',serif;max-width:860px;margin:0 auto;padding:48px 48px 64px;color:#2b2927;font-size:15px;line-height:1.8;background:#fff}
+  .report-head{margin-bottom:32px;padding-bottom:18px;border-bottom:2px solid #ece8e1}
+  .report-title{font-size:30px;line-height:1.2;margin:0 0 8px;font-weight:700}
+  .report-meta{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#7b746d}
+  h1{font-size:28px;margin:28px 0 8px}
+  h2{font-size:20px;margin:28px 0 10px}
+  h3{font-size:16px;margin:20px 0 8px;color:#5f5952}
+  p{margin:0 0 14px}
+  blockquote{border-left:4px solid #d8d0c4;margin:16px 0;padding:6px 14px;color:#5f5952;background:#faf8f4}
+  hr{border:none;border-top:1px solid #e9e3db;margin:24px 0}
+  @media print{body{padding:20px 24px 32px}.report-title{font-size:26px}}
+  </style></head><body><div class="report-head"><h1 class="report-title">${escHtml(t.name)}</h1><div class="report-meta">Generated from Template Workspace</div></div>${body}</body></html>`);
   win.document.close();
   setTimeout(()=>win.print(),300);
 }
@@ -1174,6 +1239,7 @@ function switchView(v){
   currentView=v;
   ['builder','fill'].forEach(x=>{
     document.getElementById('nav-'+x)?.classList.toggle('active',x===v);
+    document.getElementById('nav-'+x)?.setAttribute('aria-pressed',String(x===v));
     const p=document.getElementById('panel-'+x);
     if(p){
       p.style.display=x===v?'flex':'none';
@@ -1191,6 +1257,32 @@ function toast(msg){
   el.textContent=msg;
   el.classList.add('show');
   setTimeout(()=>el.classList.remove('show'),2000);
+}
+
+function setupGlobalShortcuts(){
+  document.addEventListener('keydown',event=>{
+    if(event.defaultPrevented)return;
+    const isModifier=event.ctrlKey || event.metaKey;
+    if(isModifier && event.key.toLowerCase()==='s'){
+      event.preventDefault();
+      saveTemplate();
+      return;
+    }
+    if(isModifier && event.shiftKey && event.key.toLowerCase()==='d' && activeId){
+      event.preventDefault();
+      duplicateTemplate(activeId);
+      return;
+    }
+    if(isModifier && event.key==='1'){
+      event.preventDefault();
+      switchView('builder');
+      return;
+    }
+    if(isModifier && event.key==='2'){
+      event.preventDefault();
+      switchView('fill');
+    }
+  });
 }
 
 function renderTopbarActions(view){

@@ -335,7 +335,7 @@ function renderSidebar(){
   Object.keys(templates).forEach(id=>{
     const d=document.createElement('div');
     d.className='tpl-row'+(activeId===id?' active':'');
-    d.innerHTML=`<span style="font-size:13px">📋</span><span onclick="loadTemplate('${id}')">${templates[id].name}</span><button class="tpl-del" onclick="delTpl('${id}')">×</button>`;
+    d.innerHTML=`<span class="tpl-icon">📋</span><span class="tpl-name" onclick="loadTemplate('${id}')">${templates[id].name}</span><button class="tpl-del" onclick="delTpl('${id}')">×</button>`;
     el.appendChild(d);
   });
 }

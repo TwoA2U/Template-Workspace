@@ -29,12 +29,13 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:14
 .nav-icon{font-size:14px;width:20px;text-align:center;flex-shrink:0}
 .sidebar-divider{height:1px;background:var(--border);margin:8px 8px}
 .sidebar-section-label{padding:4px 16px;font-size:11px;font-weight:600;color:var(--text3);letter-spacing:.05em;margin-top:4px}
-.tpl-row{display:flex;align-items:center;padding:4px 8px;border-radius:var(--radius);cursor:pointer;gap:4px;margin:0 0}
+.tpl-row{display:flex;align-items:center;padding:4px 8px;border-radius:var(--radius);cursor:pointer;gap:8px;margin:0 0}
 .tpl-row:hover{background:var(--bg-hover)}
 .tpl-row.active{background:var(--bg-hover)}
-.tpl-row span{font-size:13px;color:var(--text2);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.tpl-row:hover span,.tpl-row.active span{color:var(--text)}
-.tpl-row.active span{font-weight:500}
+.tpl-icon{font-size:13px;color:var(--text2);flex-shrink:0}
+.tpl-name{font-size:13px;color:var(--text2);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tpl-row:hover .tpl-icon,.tpl-row:hover .tpl-name,.tpl-row.active .tpl-icon,.tpl-row.active .tpl-name{color:var(--text)}
+.tpl-row.active .tpl-name{font-weight:500}
 .tpl-del{background:none;border:none;cursor:pointer;color:var(--text3);font-size:16px;line-height:1;padding:0 4px;opacity:0}
 .tpl-row:hover .tpl-del{opacity:1}
 .tpl-del:hover{color:var(--red)}

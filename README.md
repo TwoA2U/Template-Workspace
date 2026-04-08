@@ -2,6 +2,16 @@
 
 A small local web app for building, filling, previewing, and exporting report templates.
 
+## Screenshots
+
+### Template Builder
+
+![Template Builder view](./Images/Template-Builder-View.png)
+
+### Fill & Preview
+
+![Fill and Preview view](./Images/Fill-and-Preview-View.png)
+
 ## Run
 
 ```bash

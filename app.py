@@ -3,19 +3,35 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import shutil
+import sys
 import threading
-from http import HTTPStatus
-from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlparse
+from typing import Any
+from xml.sax.saxutils import escape
 
-BASE_DIR = Path(__file__).resolve().parent
-WEB_DIR = BASE_DIR / 'web'
+import webview
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+from reportlab.platypus import HRFlowable, Paragraph, SimpleDocTemplate, Spacer
+
+IS_FROZEN = getattr(sys, 'frozen', False)
+APP_ROOT = Path(sys.executable).resolve().parent if IS_FROZEN else Path(__file__).resolve().parent
+RESOURCE_ROOT = Path(getattr(sys, '_MEIPASS', APP_ROOT))
+WEB_DIR = RESOURCE_ROOT / 'web'
 APP_HTML = WEB_DIR / 'Report-Template-builder.html'
-TEMPLATE_DIR = BASE_DIR / 'report-templates'
+BUNDLED_TEMPLATE_DIR = RESOURCE_ROOT / 'report-templates'
+TEMPLATE_DIR = APP_ROOT / 'report-templates'
+WINDOW_ICON = WEB_DIR / 'favicon.svg'
 TEMPLATE_SUFFIX = '.json'
 STATE_LOCK = threading.Lock()
-REQUEST_LOGGING = False
+VERBOSE = False
+
+
+def log(message: str) -> None:
+    if VERBOSE:
+        print(message)
 
 
 def slugify_template_name(name: str) -> str:
@@ -72,8 +88,21 @@ def add_warning(warnings: list[str], path: Path, reason: str) -> None:
     warnings.append(f'{path.name}: {reason}')
 
 
+def seed_template_dir() -> None:
+    if TEMPLATE_DIR.exists() and any(TEMPLATE_DIR.glob('*.json')):
+        return
+    TEMPLATE_DIR.mkdir(parents=True, exist_ok=True)
+    if not BUNDLED_TEMPLATE_DIR.exists() or BUNDLED_TEMPLATE_DIR.resolve() == TEMPLATE_DIR.resolve():
+        return
+    for source in BUNDLED_TEMPLATE_DIR.glob('*.json'):
+        target = TEMPLATE_DIR / source.name
+        if not target.exists():
+            shutil.copy2(source, target)
+
+
 def ensure_template_dir() -> None:
     TEMPLATE_DIR.mkdir(parents=True, exist_ok=True)
+    seed_template_dir()
 
 
 def write_json_atomic(path: Path, payload: dict) -> None:
@@ -98,11 +127,14 @@ def load_state() -> dict[str, object]:
             if not isinstance(template_id, str) or not template_id:
                 if isinstance(data.get('name'), str) and isinstance(data.get('sections'), list):
                     template_id = path.stem
-                    rewrites.append((path, {
-                        'name': data.get('name'),
-                        'narrative': data.get('narrative'),
-                        'sections': data.get('sections'),
-                    }))
+                    rewrites.append((
+                        path,
+                        {
+                            'name': data.get('name'),
+                            'narrative': data.get('narrative'),
+                            'sections': data.get('sections'),
+                        },
+                    ))
                 else:
                     add_warning(warnings, path, 'missing required template fields')
                     continue
@@ -146,86 +178,202 @@ def save_state(payload: dict) -> dict[str, object]:
         for path in TEMPLATE_DIR.glob('*.json'):
             if path.name not in wanted_names:
                 path.unlink(missing_ok=True)
-    return {'templates': normalized, 'activeId': active_id, 'templateDir': TEMPLATE_DIR.name}
+    return {'templates': normalized, 'activeId': active_id, 'templateDir': TEMPLATE_DIR.name, 'warnings': []}
 
 
-class AppHandler(SimpleHTTPRequestHandler):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, directory=str(BASE_DIR), **kwargs)
+def default_export_name(title: str) -> str:
+    return f"{slugify_template_name(title or 'template-workspace-report')}.pdf"
 
-    def log_message(self, format: str, *args) -> None:
-        if REQUEST_LOGGING:
-            super().log_message(format, *args)
 
-    def do_GET(self) -> None:
-        parsed = urlparse(self.path)
-        if parsed.path == '/api/state':
-            self._handle_get_state()
-            return
-        if parsed.path == '/':
-            self.path = f'/{APP_HTML.relative_to(BASE_DIR).as_posix()}'
-        super().do_GET()
+def format_inline_markdown(text: str) -> str:
+    escaped = escape(text)
+    return re.sub(r'\*\*(.+?)\*\*', r'<b>\1</b>', escaped)
 
-    def do_POST(self) -> None:
-        parsed = urlparse(self.path)
-        if parsed.path == '/api/state':
-            self._handle_post_state()
-            return
-        self.send_error(HTTPStatus.NOT_FOUND, 'Unknown endpoint')
 
-    def _handle_get_state(self) -> None:
-        state = load_state()
-        self._send_json(HTTPStatus.OK, state)
+def build_pdf(output_path: Path, title: str, markdown: str) -> None:
+    styles = getSampleStyleSheet()
+    body_style = ParagraphStyle(
+        'ReportBody',
+        parent=styles['BodyText'],
+        fontName='Times-Roman',
+        fontSize=11,
+        leading=16,
+        spaceAfter=12,
+        textColor=colors.HexColor('#2b2927'),
+    )
+    title_style = ParagraphStyle(
+        'ReportTitle',
+        parent=styles['Title'],
+        fontName='Helvetica-Bold',
+        fontSize=24,
+        leading=30,
+        textColor=colors.HexColor('#2b2927'),
+        spaceAfter=4,
+    )
+    meta_style = ParagraphStyle(
+        'ReportMeta',
+        parent=styles['BodyText'],
+        fontName='Helvetica',
+        fontSize=8,
+        leading=10,
+        textColor=colors.HexColor('#7b746d'),
+        spaceAfter=14,
+    )
+    h1_style = ParagraphStyle(
+        'HeadingOne',
+        parent=styles['Heading1'],
+        fontName='Helvetica-Bold',
+        fontSize=20,
+        leading=24,
+        textColor=colors.HexColor('#2b2927'),
+        spaceAfter=8,
+        spaceBefore=16,
+    )
+    h2_style = ParagraphStyle(
+        'HeadingTwo',
+        parent=styles['Heading2'],
+        fontName='Helvetica-Bold',
+        fontSize=16,
+        leading=20,
+        textColor=colors.HexColor('#2b2927'),
+        spaceAfter=8,
+        spaceBefore=14,
+    )
+    h3_style = ParagraphStyle(
+        'HeadingThree',
+        parent=styles['Heading3'],
+        fontName='Helvetica-Bold',
+        fontSize=13,
+        leading=17,
+        textColor=colors.HexColor('#5f5952'),
+        spaceAfter=6,
+        spaceBefore=12,
+    )
+    quote_style = ParagraphStyle(
+        'Quote',
+        parent=body_style,
+        leftIndent=14,
+        borderPadding=8,
+        borderWidth=2,
+        borderColor=colors.HexColor('#d8d0c4'),
+        backColor=colors.HexColor('#faf8f4'),
+        textColor=colors.HexColor('#5f5952'),
+    )
 
-    def _handle_post_state(self) -> None:
-        length = int(self.headers.get('Content-Length', '0'))
-        raw = self.rfile.read(length)
-        try:
-            payload = json.loads(raw.decode('utf-8') or '{}')
-            state = save_state(payload)
-        except json.JSONDecodeError:
-            self._send_json(HTTPStatus.BAD_REQUEST, {'error': 'Invalid JSON payload'})
-            return
-        except ValueError as exc:
-            self._send_json(HTTPStatus.BAD_REQUEST, {'error': str(exc)})
-            return
-        self._send_json(HTTPStatus.OK, state)
+    story: list[Any] = [
+        Paragraph(escape(title or 'Template Workspace Report'), title_style),
+        Paragraph('Generated from Template Workspace', meta_style),
+        HRFlowable(width='100%', color=colors.HexColor('#ece8e1'), thickness=1),
+        Spacer(1, 18),
+    ]
 
-    def _send_json(self, status: HTTPStatus, payload: dict[str, object]) -> None:
-        body = json.dumps(payload).encode('utf-8')
-        self.send_response(status)
-        self.send_header('Content-Type', 'application/json; charset=utf-8')
-        self.send_header('Content-Length', str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
+    blocks = [block.strip() for block in re.split(r'\n\s*\n', markdown or '') if block.strip()]
+    for block in blocks:
+        if block == '---':
+            story.append(Spacer(1, 8))
+            story.append(HRFlowable(width='100%', color=colors.HexColor('#e9e3db'), thickness=1))
+            story.append(Spacer(1, 12))
+            continue
+        if block.startswith('### '):
+            story.append(Paragraph(format_inline_markdown(block[4:].strip()), h3_style))
+            continue
+        if block.startswith('## '):
+            story.append(Paragraph(format_inline_markdown(block[3:].strip()), h2_style))
+            continue
+        if block.startswith('# '):
+            story.append(Paragraph(format_inline_markdown(block[2:].strip()), h1_style))
+            continue
+        if block.startswith('> '):
+            quote_text = '\n'.join(line[2:] if line.startswith('> ') else line for line in block.splitlines())
+            story.append(Paragraph(format_inline_markdown(quote_text).replace('\n', '<br/>'), quote_style))
+            continue
+        story.append(Paragraph(format_inline_markdown(block).replace('\n', '<br/>'), body_style))
+
+    doc = SimpleDocTemplate(
+        str(output_path),
+        pagesize=A4,
+        title=title,
+        author='Template Workspace',
+        leftMargin=48,
+        rightMargin=48,
+        topMargin=48,
+        bottomMargin=48,
+    )
+    doc.build(story)
+
+
+class DesktopApi:
+    def __init__(self) -> None:
+        self.window: webview.Window | None = None
+
+    def get_state(self) -> dict[str, object]:
+        log('Loading template state')
+        return load_state()
+
+    def save_state(self, payload: dict[str, Any]) -> dict[str, object]:
+        log('Saving template state')
+        return save_state(payload or {})
+
+    def get_app_info(self) -> dict[str, str]:
+        return {'mode': 'desktop', 'templateDir': TEMPLATE_DIR.name}
+
+    def export_pdf(self, payload: dict[str, Any]) -> dict[str, object]:
+        if self.window is None:
+            raise RuntimeError('Desktop window is not ready')
+
+        report_title = str(payload.get('name') or 'Template Workspace Report')
+        markdown = str(payload.get('markdown') or '')
+        selected = self.window.create_file_dialog(
+            webview.SAVE_DIALOG,
+            save_filename=default_export_name(report_title),
+            file_types=('PDF files (*.pdf)',),
+        )
+        if not selected:
+            return {'cancelled': True}
+
+        output_path = Path(selected if isinstance(selected, str) else selected[0])
+        build_pdf(output_path, report_title, markdown)
+        log(f'Exported PDF to {output_path}')
+        return {'savedPath': str(output_path)}
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description='Serve Template Workspace locally.')
-    parser.add_argument('--host', default='127.0.0.1', help='Host interface to bind to')
-    parser.add_argument('--port', type=int, default=8000, help='Port to listen on')
+    parser = argparse.ArgumentParser(description='Launch Template Workspace desktop app.')
     parser.add_argument(
-        "-v",'--verbose',
+        '-v',
+        '--verbose',
         action='store_true',
-        help='Enable HTTP request logging in the terminal',
+        help='Enable verbose desktop logging and pywebview debug output',
     )
     return parser.parse_args()
 
 
-if __name__ == '__main__':
+def main() -> None:
+    global VERBOSE
+
     args = parse_args()
-    REQUEST_LOGGING = args.verbose
+    VERBOSE = args.verbose
     ensure_template_dir()
     if not APP_HTML.exists():
         raise FileNotFoundError(f'Frontend entry file not found: {APP_HTML}')
-    server = ThreadingHTTPServer((args.host, args.port), AppHandler)
-    print(f'Template Workspace running at http://{args.host}:{args.port}/')
+
+    api = DesktopApi()
+    window = webview.create_window(
+        title='Template Workspace',
+        url=APP_HTML.resolve().as_uri(),
+        js_api=api,
+        width=1440,
+        height=960,
+        min_size=(1120, 760),
+    )
+    api.window = window
+
+    print('Template Workspace desktop app starting...')
     print(f'Template files are stored in: {TEMPLATE_DIR}')
-    print(f'Web files are served from: {WEB_DIR}')
-    print(f'Request logging: {"on" if REQUEST_LOGGING else "off"}')
-    try:
-        server.serve_forever()
-    except KeyboardInterrupt:
-        pass
-    finally:
-        server.server_close()
+    print(f'Web files are loaded from: {WEB_DIR}')
+    print(f'Verbose logging: {"on" if VERBOSE else "off"}')
+    webview.start(debug=args.verbose)
+
+
+if __name__ == '__main__':
+    main()

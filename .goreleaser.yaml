@@ -1,0 +1,26 @@
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
+version: 2
+
+project_name: TemplateWorkspace
+dist: build/goreleaser-dist
+
+snapshot:
+  version_template: "{{ .Version }}-SNAPSHOT-{{ .ShortCommit }}-{{ .Timestamp }}"
+
+before:
+  hooks:
+    - python scripts/package_release.py build-current --version {{ .Version }} --output release-artifacts --clean
+    - python scripts/package_release.py write-checksums --version {{ .Version }} --output release-artifacts
+
+builds: []
+
+checksum:
+  disable: true
+
+source:
+  enabled: false
+
+release:
+  extra_files:
+    - glob: release-artifacts/*.zip
+    - glob: release-artifacts/*_checksums.txt

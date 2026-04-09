@@ -8,6 +8,7 @@ let pendingServerWarnings=[];
 let addFieldDrafts={};
 let dragFieldState=null;
 let dragSectionState=null;
+let desktopApiPromise=null;
 
 const STORAGE_KEY='template-workspace.state.v1';
 const THEME_KEY='template-workspace.theme';
@@ -17,8 +18,6 @@ const PREVIEW_WIDTH_KEY='template-workspace.fill-width';
 const DEFAULT_FILL_WIDTH=420;
 const MIN_FILL_WIDTH=300;
 const MAX_FILL_WIDTH=900;
-const STATE_API='/api/state';
-
 const DEFAULT={'soc-default':{
   name:'SOC Incident Report',
   narrative:'We have found an alert being triggered with name {{Incident Overview.Incident ID}}.\n\nThe affected host {{Affected Assets.Hostname(s)}} (IP: {{Affected Assets.IP Address(es)}}) was involved in a {{Incident Overview.Incident Type}} incident classified as {{Incident Overview.Severity}} severity.\n\nDetected on {{Incident Overview.Date & Time}} by analyst {{Incident Overview.Analyst}}. Current status: {{Incident Overview.Status}}.\n\n## Summary\n\n{{Incident Description.Summary}}\n\n## Initial Vector\n\n{{Incident Description.Initial Vector}}\n\n## Indicators of Compromise\n\n**Hashes:** {{Indicators of Compromise.File Hashes}}\n**IPs/Domains:** {{Indicators of Compromise.Malicious IPs / Domains}}\n**MITRE TTPs:** {{Indicators of Compromise.MITRE ATT&CK TTPs}}\n\n## Remediation\n\n{{Containment & Remediation.Containment Actions}}\n\n## Root Cause\n\n{{Lessons Learned.Root Cause}}',
@@ -60,6 +59,42 @@ const DEFAULT={'soc-default':{
     ]},
   ]
 }};
+
+function waitForDesktopApi(){
+  if(desktopApiPromise)return desktopApiPromise;
+  desktopApiPromise=new Promise((resolve,reject)=>{
+    const resolveIfReady=()=>{
+      if(window.pywebview&&window.pywebview.api){
+        resolve(window.pywebview.api);
+        return true;
+      }
+      return false;
+    };
+
+    if(resolveIfReady())return;
+
+    window.addEventListener('pywebviewready',()=>{
+      if(!resolveIfReady()){
+        reject(new Error('Desktop API is unavailable'));
+      }
+    },{once:true});
+
+    window.setTimeout(()=>{
+      if(!resolveIfReady()){
+        reject(new Error('Timed out waiting for desktop bridge'));
+      }
+    },10000);
+  });
+  return desktopApiPromise;
+}
+
+async function callDesktopApi(method,...args){
+  const api=await waitForDesktopApi();
+  if(typeof api[method]!=='function'){
+    throw new Error(`Desktop API method not found: ${method}`);
+  }
+  return api[method](...args);
+}
 
 async function init(){
   applyStoredTheme();
@@ -328,9 +363,7 @@ function showQueuedServerWarnings(){
 }
 
 async function fetchServerState(){
-  const resp=await fetch(STATE_API,{headers:{Accept:'application/json'}});
-  if(!resp.ok)throw new Error(`State load failed: ${resp.status}`);
-  const data=await resp.json();
+  const data=await callDesktopApi('get_state');
   serverConnected=true;
   serverTemplateDir=data.templateDir||serverTemplateDir;
   queueServerWarnings(data.warnings);
@@ -1198,41 +1231,27 @@ function copyMd(){
   });
 }
 
-function printReport(){
+async function printReport(){
+  if(!activeId)return;
   const t=templates[activeId];
-  const md=buildMd();
-  const win=window.open('','_blank');
-  const body=md
-    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
-    .replace(/^# (.+)$/gm,'<h1>$1</h1>')
-    .replace(/^## (.+)$/gm,'<h2>$1</h2>')
-    .replace(/^### (.+)$/gm,'<h3>$1</h3>')
-    .replace(/^&gt; (.+)$/gm,'<blockquote>$1</blockquote>')
-    .replace(/^---$/gm,'<hr>')
-    .replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>')
-    .replace(/\[(.+?)\]/g,'<span style="background:#fbe4e4;color:#e03e3e;padding:0 2px;border-radius:3px">[$1]</span>')
-    .split(/\n{2,}/)
-    .map(block=>{
-      if(/^\s*<h[1-3]|^\s*<blockquote|^\s*<hr/.test(block))return block;
-      return `<p>${block.replace(/\n/g,'<br>')}</p>`;
-    })
-    .join('');
-  win.document.write(`<!DOCTYPE html><html><head><title>${escHtml(t.name)}</title>
-  <style>
-  body{font-family:Georgia,'Times New Roman',serif;max-width:860px;margin:0 auto;padding:48px 48px 64px;color:#2b2927;font-size:15px;line-height:1.8;background:#fff}
-  .report-head{margin-bottom:32px;padding-bottom:18px;border-bottom:2px solid #ece8e1}
-  .report-title{font-size:30px;line-height:1.2;margin:0 0 8px;font-weight:700}
-  .report-meta{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#7b746d}
-  h1{font-size:28px;margin:28px 0 8px}
-  h2{font-size:20px;margin:28px 0 10px}
-  h3{font-size:16px;margin:20px 0 8px;color:#5f5952}
-  p{margin:0 0 14px}
-  blockquote{border-left:4px solid #d8d0c4;margin:16px 0;padding:6px 14px;color:#5f5952;background:#faf8f4}
-  hr{border:none;border-top:1px solid #e9e3db;margin:24px 0}
-  @media print{body{padding:20px 24px 32px}.report-title{font-size:26px}}
-  </style></head><body><div class="report-head"><h1 class="report-title">${escHtml(t.name)}</h1><div class="report-meta">Generated from Template Workspace</div></div>${body}</body></html>`);
-  win.document.close();
-  setTimeout(()=>win.print(),300);
+  try{
+    const result=await callDesktopApi('export_pdf',{
+      name:t.name,
+      markdown:buildMd()
+    });
+    if(result&&result.cancelled){
+      toast('Export cancelled');
+      return;
+    }
+    if(result&&result.savedPath){
+      toast(`Exported PDF: ${result.savedPath}`);
+      return;
+    }
+    toast('PDF export completed');
+  }catch(err){
+    console.warn('Unable to export PDF',err);
+    toast('Unable to export PDF');
+  }
 }
 
 function switchView(v){
@@ -1333,13 +1352,7 @@ async function reloadTemplatesFromServer(showToast=true){
 
 async function saveTemplatesToServer(){
   try{
-    const resp=await fetch(STATE_API,{
-      method:'POST',
-      headers:{'Content-Type':'application/json',Accept:'application/json'},
-      body:JSON.stringify({templates,activeId})
-    });
-    if(!resp.ok)throw new Error(`State save failed: ${resp.status}`);
-    const data=await resp.json();
+    const data=await callDesktopApi('save_state',{templates,activeId});
     serverConnected=true;
     serverTemplateDir=data.templateDir||serverTemplateDir;
     queueServerWarnings(data.warnings);
@@ -1396,7 +1409,16 @@ function setupPreviewResize(){
   });
 }
 
-init();
+waitForDesktopApi()
+  .then(init)
+  .catch(err=>{
+    console.error('Failed to initialize desktop bridge',err);
+    const toastEl=document.getElementById('toast');
+    if(toastEl){
+      toastEl.textContent='Desktop bridge failed to initialize.';
+      toastEl.classList.add('show');
+    }
+  });
 document.getElementById('tpl-name').addEventListener('input',e=>{
   if(!activeId)return;
   templates[activeId].name=e.target.value;

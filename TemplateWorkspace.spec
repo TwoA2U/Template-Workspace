@@ -1,7 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
 from PyInstaller.utils.hooks import collect_all
 
-datas = [('web', 'web'), ('report-templates', 'report-templates')]
+datas = [('web', 'web'), ('report-templates', 'report-templates'), ('README.MD', '.')]
 binaries = []
 hiddenimports = []
 tmp_ret = collect_all('webview')

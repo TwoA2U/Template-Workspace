@@ -83,6 +83,8 @@ The shared packaging helper used by both GoReleaser and CI is:
 python scripts/package_release.py build-current --version <version> --output release-artifacts --clean
 ```
 
+GoReleaser generates the checksum file from those packaged zip artifacts, so the Python helper only handles platform packaging.
+
 ## Project Layout
 
 - `app.py`: desktop entrypoint, template persistence, JS bridge, and PDF export

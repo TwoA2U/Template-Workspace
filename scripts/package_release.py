@@ -194,9 +194,9 @@ def command_write_checksums(args: argparse.Namespace) -> int:
     version = normalize_version(args.version)
     output_dir = Path(args.output).resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
-    archives = sorted(output_dir.glob(f"{PROJECT_NAME}_{version}_*.zip"))
+    archives = sorted(path for path in output_dir.rglob(f"{PROJECT_NAME}_{version}_*.zip") if path.is_file())
     if not archives:
-        archives = sorted(output_dir.glob(f"{PROJECT_NAME}_*.zip"))
+        archives = sorted(path for path in output_dir.rglob(f"{PROJECT_NAME}_*.zip") if path.is_file())
     if not archives:
         raise FileNotFoundError(f"no archives found in {output_dir} for version {version}")
 

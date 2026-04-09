@@ -10,17 +10,18 @@ snapshot:
 before:
   hooks:
     - python scripts/package_release.py build-current --version {{ .Version }} --output release-artifacts --clean
-    - python scripts/package_release.py write-checksums --version {{ .Version }} --output release-artifacts
 
 builds: []
 
 checksum:
-  disable: true
+  name_template: "{{ .ProjectName }}_{{ .Version }}_checksums.txt"
+  algorithm: sha256
+  extra_files:
+    - glob: release-artifacts/**/*.zip
 
 source:
   enabled: false
 
 release:
   extra_files:
-    - glob: release-artifacts/*.zip
-    - glob: release-artifacts/*_checksums.txt
+    - glob: release-artifacts/**/*.zip

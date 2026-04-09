@@ -92,7 +92,7 @@ jobs:
           python-version: "3.13"
 
       - name: Download packaged artifacts
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v8
         with:
           pattern: release-*
           path: release-artifacts
@@ -125,7 +125,7 @@ jobs:
           python-version: "3.13"
 
       - name: Download packaged artifacts
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v8
         with:
           pattern: release-*
           path: release-artifacts

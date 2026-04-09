@@ -18,8 +18,6 @@ A desktop template editor built with Python, `pywebview`, and a local HTML/CSS/J
 python -m pip install -r requirements.txt
 ```
 
-For release packaging, install the GoReleaser CLI too. Official install options are listed at [goreleaser.com/install](https://goreleaser.com/install/).
-
 ## Run Desktop App
 
 ```bash
@@ -38,25 +36,25 @@ Enable verbose desktop logging and `pywebview` debug output if needed:
 python app.py --verbose
 ```
 
-## Release Builds
+## Local Packaging
 
-Build a local snapshot for the current platform with:
+Build a local package for the current platform with:
 
 ```bash
-goreleaser release --snapshot
+python scripts/package_release.py build-current --version snapshot --output release-artifacts --clean
 ```
 
-This writes zip artifacts and a checksum file into:
+Write checksums for local artifacts with:
 
-```text
-release-artifacts\
+```bash
+python scripts/package_release.py write-checksums --version snapshot --output release-artifacts
 ```
 
 Typical local output on Windows looks like:
 
 ```text
-release-artifacts\TemplateWorkspace_<version>_Windows_x86_64.zip
-release-artifacts\TemplateWorkspace_<version>_checksums.txt
+release-artifacts\TemplateWorkspace_snapshot_Windows_x86_64.zip
+release-artifacts\TemplateWorkspace_snapshot_checksums.txt
 ```
 
 Official releases are tag-driven:
@@ -66,7 +64,7 @@ git tag v1.0.0
 git push origin v1.0.0
 ```
 
-The GitHub Actions workflow then builds Windows, Linux, and macOS artifacts on native runners, generates checksums, and publishes them to the GitHub Release for that tag.
+The GitHub Actions workflow then builds Windows, Linux, and macOS artifacts on native runners, generates checksums, and publishes them directly to the GitHub Release for that tag.
 
 Manual `workflow_dispatch` runs are also supported for snapshot testing without publishing a GitHub Release.
 
@@ -77,13 +75,11 @@ PyInstaller remains the actual app builder, and the checked-in spec files stay t
 - `TemplateWorkspace.spec`: Windows/Linux `onedir` packaging
 - `TemplateWorkspace.macos.spec`: macOS `.app` packaging
 
-The shared packaging helper used by both GoReleaser and CI is:
+The shared packaging helper used by both local packaging and CI is:
 
 ```bash
 python scripts/package_release.py build-current --version <version> --output release-artifacts --clean
 ```
-
-GoReleaser generates the checksum file from those packaged zip artifacts, so the Python helper only handles platform packaging.
 
 ## Project Layout
 
@@ -96,8 +92,7 @@ GoReleaser generates the checksum file from those packaged zip artifacts, so the
 - `requirements.txt`: runtime and build dependencies
 - `TemplateWorkspace.spec`: Windows/Linux PyInstaller packaging definition
 - `TemplateWorkspace.macos.spec`: macOS PyInstaller app-bundle definition
-- `scripts/package_release.py`: cross-platform packaging helper used by GoReleaser and CI
-- `.goreleaser.yaml`: GoReleaser release config
+- `scripts/package_release.py`: cross-platform packaging helper used by local packaging and CI
 - `.github/workflows/release.yml`: GitHub Actions release workflow
 
 ## Features

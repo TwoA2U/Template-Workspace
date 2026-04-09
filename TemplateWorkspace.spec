@@ -30,6 +30,7 @@ exe = EXE(
     a.scripts,
     [],
     name='TemplateWorkspace',
+    exclude_binaries=True,
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

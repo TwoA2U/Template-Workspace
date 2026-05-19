@@ -1,17 +1,32 @@
 # -*- mode: python ; coding: utf-8 -*-
 from PyInstaller.utils.hooks import collect_all
 
-datas = [('web', 'web'), ('report-templates', 'report-templates')]
+datas = [("web", "web"), ("report-templates", "report-templates")]
 binaries = []
 hiddenimports = []
-tmp_ret = collect_all('webview')
-datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
-tmp_ret = collect_all('reportlab')
-datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 
+tmp_ret = collect_all("webview")
+datas += tmp_ret[0]
+binaries += tmp_ret[1]
+hiddenimports += tmp_ret[2]
+
+tmp_ret = collect_all("reportlab")
+datas += tmp_ret[0]
+binaries += tmp_ret[1]
+hiddenimports += tmp_ret[2]
+
+tmp_ret = collect_all("qtpy")
+datas += tmp_ret[0]
+binaries += tmp_ret[1]
+hiddenimports += tmp_ret[2]
+
+tmp_ret = collect_all("PySide6")
+datas += tmp_ret[0]
+binaries += tmp_ret[1]
+hiddenimports += tmp_ret[2]
 
 a = Analysis(
-    ['app.py'],
+    ["app.py"],
     pathex=[],
     binaries=binaries,
     datas=datas,
@@ -29,7 +44,7 @@ exe = EXE(
     pyz,
     a.scripts,
     [],
-    name='TemplateWorkspace',
+    name="TemplateWorkspace",
     exclude_binaries=True,
     debug=False,
     bootloader_ignore_signals=False,
@@ -52,5 +67,5 @@ coll = COLLECT(
     strip=False,
     upx=True,
     upx_exclude=[],
-    name='TemplateWorkspace',
+    name="TemplateWorkspace",
 )

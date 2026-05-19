@@ -9,15 +9,23 @@ let addFieldDrafts={};
 let dragFieldState=null;
 let dragSectionState=null;
 let desktopApiPromise=null;
+let reportEditMode=false;
+let reportDraft='';
+let reportDraftDirty=false;
 
 const STORAGE_KEY='template-workspace.state.v1';
 const THEME_KEY='template-workspace.theme';
 const TEMPLATE_SORT_KEY='template-workspace.template-sort';
+const TEMPLATE_RECENT_KEY='template-workspace.template-recent.v1';
 const TEMPLATE_FILE_SUFFIX='.json';
 const PREVIEW_WIDTH_KEY='template-workspace.fill-width';
+const SIDEBAR_WIDTH_KEY='template-workspace.sidebar-width';
 const DEFAULT_FILL_WIDTH=420;
 const MIN_FILL_WIDTH=300;
 const MAX_FILL_WIDTH=900;
+const DEFAULT_SIDEBAR_WIDTH=220;
+const MIN_SIDEBAR_WIDTH=180;
+const MAX_SIDEBAR_WIDTH=420;
 const DEFAULT={'soc-default':{
   name:'SOC Incident Report',
   narrative:'We have found an alert being triggered with name {{Incident Overview.Incident ID}}.\n\nThe affected host {{Affected Assets.Hostname(s)}} (IP: {{Affected Assets.IP Address(es)}}) was involved in a {{Incident Overview.Incident Type}} incident classified as {{Incident Overview.Severity}} severity.\n\nDetected on {{Incident Overview.Date & Time}} by analyst {{Incident Overview.Analyst}}. Current status: {{Incident Overview.Status}}.\n\n## Summary\n\n{{Incident Description.Summary}}\n\n## Initial Vector\n\n{{Incident Description.Initial Vector}}\n\n## Indicators of Compromise\n\n**Hashes:** {{Indicators of Compromise.File Hashes}}\n**IPs/Domains:** {{Indicators of Compromise.Malicious IPs / Domains}}\n**MITRE TTPs:** {{Indicators of Compromise.MITRE ATT&CK TTPs}}\n\n## Remediation\n\n{{Containment & Remediation.Containment Actions}}\n\n## Root Cause\n\n{{Lessons Learned.Root Cause}}',
@@ -98,11 +106,13 @@ async function callDesktopApi(method,...args){
 
 async function init(){
   applyStoredTheme();
+  applyStoredSidebarWidth();
   applyStoredPreviewWidth();
   await hydrateTemplates();
   applyStoredTemplateSort();
   const firstId=templates[activeId]?activeId:Object.keys(templates)[0];
   loadTemplate(firstId||'soc-default');
+  setupSidebarResize();
   setupAutocomplete();
   setupPreviewResize();
   setupTemplateSort();
@@ -402,6 +412,8 @@ async function hydrateTemplates(){
 
 function loadTemplate(id){
   activeId=id;
+  markTemplateRecent(id);
+  resetReportDraft(false);
   const t=templates[id];
   document.getElementById('tpl-name').value=t.name;
   document.getElementById('narrative-editor').value=t.narrative||'';
@@ -463,10 +475,12 @@ function getSortedTemplateIds(){
   if(sortMode==='za'){
     return ids.sort((a,b)=>templates[b].name.localeCompare(templates[a].name));
   }
+  const recentMap=getTemplateRecentMap();
   return ids.sort((a,b)=>{
-    if(a===activeId)return -1;
-    if(b===activeId)return 1;
-    return 0;
+    const aTime=Number(recentMap[a]||0);
+    const bTime=Number(recentMap[b]||0);
+    if(aTime!==bTime)return bTime-aTime;
+    return templates[a].name.localeCompare(templates[b].name);
   });
 }
 
@@ -509,7 +523,14 @@ function renderVarChips(){
   });
 }
 
-function copyVar(v){navigator.clipboard.writeText(v).then(()=>toast('Copied'));}
+function copyVar(v){
+  copyText(v)
+    .then(()=>toast('Copied'))
+    .catch(err=>{
+      console.warn('Unable to copy variable',err);
+      toast('Copy failed');
+    });
+}
 
 function moveSection(fromIndex,toIndex){
   const sections=templates[activeId]?.sections;
@@ -993,6 +1014,7 @@ function setupTemplateSort(){
 function delTpl(id){
   if(Object.keys(templates).length<=1){toast('Cannot delete last template');return;}
   delete templates[id];
+  clearTemplateRecent(id);
   if(activeId===id)loadTemplate(Object.keys(templates)[0]);
   else renderSidebar();
   scheduleTemplatePersist();
@@ -1208,26 +1230,130 @@ function escHtml(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(
 function updatePreview(){
   const t=templates[activeId];
   if(!t)return;
+  syncReportEditButtons();
+  if(reportEditMode){
+    if(!reportDraftDirty)reportDraft=buildLiveMd();
+    renderPreviewEditor();
+    return;
+  }
+  const preview=ensurePreviewProse();
+  if(reportDraftDirty){
+    preview.innerHTML=escHtml(reportDraft).replace(/\n/g,'<br>');
+    return;
+  }
   const map=getValMap();
   const raw=t.narrative||'';
   if(!raw.trim()){
-    document.getElementById('preview-prose').innerHTML='<span style="color:var(--text3);font-style:italic">No narrative defined. Add one in Template Builder.</span>';
+    preview.innerHTML='<span style="color:var(--text3);font-style:italic">No narrative defined. Add one in Template Builder.</span>';
     return;
   }
   const htmlNarr=resolveNarrative(raw,map,true);
-  document.getElementById('preview-prose').innerHTML=htmlNarr.replace(/\n/g,'<br>');
+  preview.innerHTML=htmlNarr.replace(/\n/g,'<br>');
 }
 
-function buildMd(){
+function buildLiveMd(){
   const map=getValMap();
   return resolveNarrative((templates[activeId]?.narrative)||'',map,false).trim();
 }
 
+function buildMd(){
+  syncReportDraftFromEditor();
+  return reportDraftDirty ? reportDraft.trim() : buildLiveMd();
+}
+
+function syncReportEditButtons(){
+  const editBtn=document.getElementById('edit-preview-btn');
+  const resetBtn=document.getElementById('reset-preview-btn');
+  if(editBtn)editBtn.textContent=reportEditMode?'Done Editing':'Edit Preview';
+  if(resetBtn)resetBtn.classList.toggle('hidden',!reportDraftDirty&&!reportEditMode);
+}
+
+function renderPreviewEditor(){
+  const current=document.getElementById('preview-prose');
+  if(!current)return;
+  if(current.tagName==='TEXTAREA'){
+    if(document.activeElement!==current)current.value=reportDraft;
+    return;
+  }
+  const editor=document.createElement('textarea');
+  editor.id='preview-prose';
+  editor.className='preview-editor';
+  editor.value=reportDraft;
+  editor.setAttribute('aria-label','Editable report preview');
+  editor.addEventListener('input',event=>{
+    reportDraft=event.target.value;
+    reportDraftDirty=true;
+    syncReportEditButtons();
+  });
+  current.replaceWith(editor);
+  editor.focus();
+}
+
+function ensurePreviewProse(){
+  const current=document.getElementById('preview-prose');
+  if(current&&current.tagName!=='TEXTAREA')return current;
+  const preview=document.createElement('div');
+  preview.id='preview-prose';
+  preview.className='preview-prose';
+  if(current)current.replaceWith(preview);
+  return preview;
+}
+
+function toggleReportEdit(){
+  if(!reportEditMode&&!reportDraftDirty){
+    reportDraft=buildLiveMd();
+  } else if(reportEditMode){
+    syncReportDraftFromEditor();
+  }
+  reportEditMode=!reportEditMode;
+  updatePreview();
+}
+
+function syncReportDraftFromEditor(){
+  const editor=document.getElementById('preview-prose');
+  if(editor&&editor.tagName==='TEXTAREA'){
+    reportDraft=editor.value;
+    reportDraftDirty=reportDraft.trim()!==buildLiveMd();
+  }
+}
+
+function resetReportDraft(render=true){
+  reportEditMode=false;
+  reportDraft='';
+  reportDraftDirty=false;
+  if(render&&currentView==='fill')updatePreview();
+}
+
+async function copyText(text){
+  const textarea=document.createElement('textarea');
+  textarea.value=text;
+  textarea.setAttribute('readonly','');
+  textarea.style.position='fixed';
+  textarea.style.top='-1000px';
+  textarea.style.left='-1000px';
+  document.body.appendChild(textarea);
+  textarea.select();
+  textarea.setSelectionRange(0,textarea.value.length);
+  const copied=document.execCommand('copy');
+  textarea.remove();
+  if(copied)return;
+
+  if(navigator.clipboard&&window.isSecureContext){
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+
+  throw new Error('Unable to access clipboard');
+}
+
 function copyMd(){
-  navigator.clipboard.writeText(buildMd()).then(()=>{
+  copyText(buildMd()).then(()=>{
     const b=document.getElementById('copy-btn');
     b.textContent='Copied!';
     setTimeout(()=>b.textContent='Copy Markdown',2000);
+  }).catch(err=>{
+    console.warn('Unable to copy markdown',err);
+    toast('Copy failed');
   });
 }
 
@@ -1377,6 +1503,76 @@ function applyStoredPreviewWidth(){
   const raw=localStorage.getItem(PREVIEW_WIDTH_KEY);
   const width=Math.min(MAX_FILL_WIDTH,Math.max(MIN_FILL_WIDTH,Number(raw)||DEFAULT_FILL_WIDTH));
   document.documentElement.style.setProperty('--fill-width',width+'px');
+}
+
+function applyStoredSidebarWidth(){
+  const raw=localStorage.getItem(SIDEBAR_WIDTH_KEY);
+  const width=Math.min(MAX_SIDEBAR_WIDTH,Math.max(MIN_SIDEBAR_WIDTH,Number(raw)||DEFAULT_SIDEBAR_WIDTH));
+  document.documentElement.style.setProperty('--sidebar-width',width+'px');
+}
+
+function getTemplateRecentMap(){
+  const raw=localStorage.getItem(TEMPLATE_RECENT_KEY);
+  if(!raw)return {};
+  try{
+    const parsed=JSON.parse(raw);
+    return parsed&&typeof parsed==='object' ? parsed : {};
+  }catch(err){
+    console.warn('Failed to parse template recency map',err);
+    return {};
+  }
+}
+
+function setTemplateRecentMap(map){
+  localStorage.setItem(TEMPLATE_RECENT_KEY,JSON.stringify(map));
+}
+
+function markTemplateRecent(id){
+  if(!id || !templates[id])return;
+  const map=getTemplateRecentMap();
+  map[id]=Date.now();
+  setTemplateRecentMap(map);
+}
+
+function clearTemplateRecent(id){
+  const map=getTemplateRecentMap();
+  if(!(id in map))return;
+  delete map[id];
+  setTemplateRecentMap(map);
+}
+
+function setupSidebarResize(){
+  const resizer=document.getElementById('sidebar-resizer');
+  const layout=document.querySelector('.layout');
+  const sidebar=document.querySelector('.sidebar');
+  if(!resizer || !layout || !sidebar)return;
+
+  resizer.addEventListener('mousedown',event=>{
+    event.preventDefault();
+    const startX=event.clientX;
+    const startWidth=sidebar.getBoundingClientRect().width;
+    resizer.classList.add('dragging');
+
+    const onMove=moveEvent=>{
+      const bounds=layout.getBoundingClientRect();
+      const maxAllowed=Math.min(MAX_SIDEBAR_WIDTH,Math.max(MIN_SIDEBAR_WIDTH,bounds.width-360));
+      const nextWidth=Math.min(
+        Math.max(startWidth+(moveEvent.clientX-startX),MIN_SIDEBAR_WIDTH),
+        maxAllowed
+      );
+      document.documentElement.style.setProperty('--sidebar-width',nextWidth+'px');
+      localStorage.setItem(SIDEBAR_WIDTH_KEY,String(Math.round(nextWidth)));
+    };
+
+    const onUp=()=>{
+      resizer.classList.remove('dragging');
+      window.removeEventListener('mousemove',onMove);
+      window.removeEventListener('mouseup',onUp);
+    };
+
+    window.addEventListener('mousemove',onMove);
+    window.addEventListener('mouseup',onUp);
+  });
 }
 
 function setupPreviewResize(){

@@ -37,6 +37,7 @@
       <button class="new-tpl-btn" type="button" onclick="newTemplate()"><span style="font-size:16px">+</span>New template</button>
     </div>
   </div>
+  <div class="sidebar-resizer" id="sidebar-resizer" title="Drag to resize sidebar" aria-label="Resize sidebar" role="separator"></div>
 
   <div class="main">
     <div class="topbar">
@@ -88,6 +89,8 @@
           <div class="preview-col">
             <div class="col-title"><span class="col-title-icon">👁️</span>Live Preview</div>
             <div class="export-row">
+              <button class="btn btn-default" id="edit-preview-btn" onclick="toggleReportEdit()">Edit Preview</button>
+              <button class="btn btn-ghost hidden" id="reset-preview-btn" onclick="resetReportDraft()">Reset Live</button>
               <button class="btn btn-default" id="copy-btn" onclick="copyMd()">Copy Markdown</button>
               <button class="btn btn-blue" onclick="printReport()">Export PDF</button>
             </div>

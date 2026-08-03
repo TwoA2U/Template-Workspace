@@ -20,11 +20,19 @@ Install Go 1.25+ and the Wails CLI:
 go install github.com/wailsapp/wails/v2/cmd/wails@v2.13.0
 ```
 
+On Ubuntu 24.04+, install the native WebView dependencies before building:
+
+```bash
+sudo apt-get install libgtk-3-dev libwebkit2gtk-4.1-dev
+```
+
 ## Run Desktop App
 
 ```bash
 wails dev
 ```
+
+On Ubuntu 24.04+, append `-tags webkit2_41` to Wails build commands.
 
 ## Local Packaging
 

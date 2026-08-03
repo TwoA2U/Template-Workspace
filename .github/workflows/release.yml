@@ -61,8 +61,17 @@ jobs:
       - name: Install Wails
         run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.13.0
 
+      - name: Install Linux WebView dependencies
+        if: matrix.os == 'ubuntu-latest'
+        run: sudo apt-get update && sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev
+
       - name: Build application
+        if: matrix.os != 'ubuntu-latest'
         run: wails build
+
+      - name: Build application (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: wails build -tags webkit2_41
 
       - name: Archive application
         shell: pwsh

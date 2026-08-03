@@ -64,8 +64,8 @@ function waitForDesktopApi(){
   if(desktopApiPromise)return desktopApiPromise;
   desktopApiPromise=new Promise((resolve,reject)=>{
     const resolveIfReady=()=>{
-      if(window.pywebview&&window.pywebview.api){
-        resolve(window.pywebview.api);
+      if(window.go&&window.go.main&&window.go.main.App){
+        resolve(window.go.main.App);
         return true;
       }
       return false;
@@ -73,7 +73,7 @@ function waitForDesktopApi(){
 
     if(resolveIfReady())return;
 
-    window.addEventListener('pywebviewready',()=>{
+    window.addEventListener('DOMContentLoaded',()=>{
       if(!resolveIfReady()){
         reject(new Error('Desktop API is unavailable'));
       }
@@ -363,7 +363,7 @@ function showQueuedServerWarnings(){
 }
 
 async function fetchServerState(){
-  const data=await callDesktopApi('get_state');
+  const data=await callDesktopApi('GetState');
   serverConnected=true;
   serverTemplateDir=data.templateDir||serverTemplateDir;
   queueServerWarnings(data.warnings);
@@ -1235,7 +1235,7 @@ async function printReport(){
   if(!activeId)return;
   const t=templates[activeId];
   try{
-    const result=await callDesktopApi('export_pdf',{
+    const result=await callDesktopApi('ExportPDF',{
       name:t.name,
       markdown:buildMd()
     });
@@ -1352,7 +1352,7 @@ async function reloadTemplatesFromServer(showToast=true){
 
 async function saveTemplatesToServer(){
   try{
-    const data=await callDesktopApi('save_state',{templates,activeId});
+    const data=await callDesktopApi('SaveState',{templates,activeId});
     serverConnected=true;
     serverTemplateDir=data.templateDir||serverTemplateDir;
     queueServerWarnings(data.warnings);

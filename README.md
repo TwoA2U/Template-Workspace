@@ -1,6 +1,6 @@
 # Template Workspace
 
-A desktop template editor built with Python, `pywebview`, and a local HTML/CSS/JS UI. It stores templates as individual JSON files, opens as a standalone GUI window, and can export filled reports to PDF.
+A desktop template editor built with Go, Wails v2, and a local HTML/CSS/JS UI. It stores templates as individual JSON files and exports filled reports to PDF.
 
 ## Screenshots
 
@@ -14,26 +14,16 @@ A desktop template editor built with Python, `pywebview`, and a local HTML/CSS/J
 
 ## Install
 
+Install Go 1.25+ and the Wails CLI:
+
 ```bash
-python -m pip install -r requirements.txt
+go install github.com/wailsapp/wails/v2/cmd/wails@v2.13.0
 ```
 
 ## Run Desktop App
 
 ```bash
-python app.py
-```
-
-Or on Windows:
-
-```text
-start-template-workspace.bat
-```
-
-Enable verbose desktop logging and `pywebview` debug output if needed:
-
-```bash
-python app.py --verbose
+wails dev
 ```
 
 ## Local Packaging
@@ -41,21 +31,10 @@ python app.py --verbose
 Build a local package for the current platform with:
 
 ```bash
-python scripts/package_release.py build-current --version snapshot --output release-artifacts --clean
+wails build
 ```
 
-Write checksums for local artifacts with:
-
-```bash
-python scripts/package_release.py write-checksums --version snapshot --output release-artifacts
-```
-
-Typical local output on Windows looks like:
-
-```text
-release-artifacts\TemplateWorkspace_snapshot_Windows_x86_64.zip
-release-artifacts\TemplateWorkspace_snapshot_checksums.txt
-```
+The platform binary is written to `build/bin/`.
 
 Official releases are tag-driven:
 
@@ -64,35 +43,25 @@ git tag v1.0.0
 git push origin v1.0.0
 ```
 
-The GitHub Actions workflow then builds Windows, Linux, and macOS artifacts on native runners, generates checksums, and publishes them directly to the GitHub Release for that tag.
+The GitHub Actions workflow builds Windows, Linux, and macOS artifacts on native runners and publishes them directly to the GitHub Release for that tag.
 
 Manual `workflow_dispatch` runs are also supported for snapshot testing without publishing a GitHub Release.
 
 ## Packaging Layout
 
-PyInstaller remains the actual app builder, and the checked-in spec files stay the packaging source of truth:
-
-- `TemplateWorkspace.spec`: Windows/Linux `onedir` packaging
-- `TemplateWorkspace.macos.spec`: macOS `.app` packaging
-
-The shared packaging helper used by both local packaging and CI is:
-
-```bash
-python scripts/package_release.py build-current --version <version> --output release-artifacts --clean
-```
+Wails builds a native application using the platform WebView. The `wails.json` file is the packaging configuration.
 
 ## Project Layout
 
-- `app.py`: desktop entrypoint, template persistence, JS bridge, and PDF export
+- `main.go`: Wails desktop entrypoint and embedded frontend assets
+- `app.go`: template persistence, JS bridge, and PDF export
 - `web/`: frontend loaded inside the desktop window
 - `web/Report-Template-builder.html`: app markup
 - `web/Report-Template-builder.css`: app styles
 - `web/Report-Template-builder.js`: app logic and desktop bridge calls
 - `report-templates/`: saved template JSON files
-- `requirements.txt`: runtime and build dependencies
-- `TemplateWorkspace.spec`: Windows/Linux PyInstaller packaging definition
-- `TemplateWorkspace.macos.spec`: macOS PyInstaller app-bundle definition
-- `scripts/package_release.py`: cross-platform packaging helper used by local packaging and CI
+- `go.mod`: Go and Wails dependencies
+- `wails.json`: Wails build configuration
 - `.github/workflows/release.yml`: GitHub Actions release workflow
 
 ## Features
@@ -104,7 +73,7 @@ python scripts/package_release.py build-current --version <version> --output rel
 - Fill templates and see a live preview
 - Copy the rendered report as Markdown or export it to PDF
 - Sort templates by recent, `A-Z`, or `Z-A`
-- Autosave template changes through the Python desktop bridge and browser cache
+- Autosave template changes through the Go desktop bridge and browser cache
 - Launch without a local web server or browser tab
 
 ## Keyboard Shortcuts

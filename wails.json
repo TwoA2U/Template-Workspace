@@ -1,0 +1,11 @@
+{
+  "$schema": "https://wails.io/schemas/config.v2.json",
+  "name": "Template Workspace",
+  "outputfilename": "TemplateWorkspace",
+  "frontend:dir": "web",
+  "assetdir": "web",
+  "frontend:install": "",
+  "frontend:build": "",
+  "frontend:dev:build": "",
+  "frontend:dev:watcher": ""
+}

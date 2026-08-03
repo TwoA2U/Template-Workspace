@@ -51,6 +51,8 @@ git tag v1.0.0
 git push origin v1.0.0
 ```
 
+Before creating a tag, run **build-check** from the repository’s GitHub Actions page. It compiles Windows, Linux, and macOS builds but does not upload or publish artifacts.
+
 The GitHub Actions workflow builds Windows, Linux, and macOS artifacts on native runners and publishes them directly to the GitHub Release for that tag.
 
 Manual `workflow_dispatch` runs are also supported for snapshot testing without publishing a GitHub Release.
